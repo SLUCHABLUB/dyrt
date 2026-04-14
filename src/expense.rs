@@ -6,13 +6,13 @@ use serde::Deserialize;
 #[serde(rename_all = "PascalCase")]
 pub struct Expense {
     #[serde(alias = "Datum")]
-    date: NaiveDate,
-    #[serde(alias = "Utgift")]
-    expense: Box<str>,
-    #[serde(alias = "Klass")]
-    class: Box<str>,
+    pub date: NaiveDate,
+    // #[serde(alias = "Utgift")]
+    // pub expense: Box<str>,
+    // #[serde(alias = "Klass")]
+    // pub class: Box<str>,
     #[serde(alias = "Mängd")]
-    amount: f64,
-    #[serde(alias = "Plats")]
-    location: Box<str>,
+    pub amount: f64,
+    // #[serde(alias = "Plats")]
+    // pub location: Box<str>,
 }
