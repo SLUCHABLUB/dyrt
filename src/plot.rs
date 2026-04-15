@@ -17,6 +17,14 @@ use plotters::style::text_anchor::HPos;
 use plotters::style::text_anchor::Pos;
 use plotters::style::text_anchor::VPos;
 
+// TODO: Calculate these dynamically.
+const IMAGE_WIDTH: u32 = 1920;
+const IMAGE_HEIGHT: u32 = 1080;
+const IMAGE_SIZE: (u32, u32) = (IMAGE_WIDTH, IMAGE_HEIGHT);
+const FONT_SIZE: f64 = 32.0;
+const X_LABEL_AREA_HEIGHT: u32 = 25;
+const Y_LABEL_AREA_WIDTH: u32 = 100;
+
 pub fn per_day<'expenses>(
     expenses: impl IntoIterator<Item = &'expenses Expense>,
 ) -> anyhow::Result<DynamicImage> {
@@ -38,25 +46,23 @@ pub fn per_day<'expenses>(
         .max_by(f64::total_cmp)
         .unwrap_or_default();
 
-    let image_size @ (image_width, image_height) = (1920, 1080);
-
-    let mut image_buffer = ImageBuffer::new(image_width, image_height);
+    let mut image_buffer = ImageBuffer::new(IMAGE_WIDTH, IMAGE_HEIGHT);
 
     let text_style = TextStyle {
-        font: FontDesc::new(FontFamily::SansSerif, 12.0, FontStyle::Normal),
+        font: FontDesc::new(FontFamily::SansSerif, FONT_SIZE, FontStyle::Normal),
         color: colours.text.to_backend_color(),
         // Trying to centre the text here makes it, not centred.
         pos: Pos::new(HPos::Left, VPos::Top),
     };
 
-    let root = BitMapBackend::with_buffer(&mut image_buffer, image_size).into_drawing_area();
+    let root = BitMapBackend::with_buffer(&mut image_buffer, IMAGE_SIZE).into_drawing_area();
     root.fill(&colours.background)?;
 
     let mut chart = ChartBuilder::on(&root)
         .caption("Expenses Over Time", text_style.clone())
         .margin(10)
-        .x_label_area_size(25)
-        .y_label_area_size(50)
+        .x_label_area_size(X_LABEL_AREA_HEIGHT)
+        .y_label_area_size(Y_LABEL_AREA_WIDTH)
         .build_cartesian_2d(start_date..end_date, 0.0..max_expense)?;
 
     chart
