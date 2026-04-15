@@ -1,6 +1,8 @@
 use anyhow::Context;
 use dark_light::Mode;
 use plotters::style::RGBColor;
+use std::process::exit;
+use std::sync::LazyLock;
 
 pub struct Colours {
     pub text: RGBColor,
@@ -11,8 +13,15 @@ pub struct Colours {
     pub graph: RGBColor,
 }
 
-pub fn colours() -> anyhow::Result<Colours> {
-    let mode = dark_light::detect().context("detetcting the system colour scheme")?;
+pub static COLOURS: LazyLock<Colours> = LazyLock::new(|| {
+    colours().unwrap_or_else(|error| {
+        eprintln!("Error: {error}");
+        exit(1)
+    })
+});
+
+fn colours() -> anyhow::Result<Colours> {
+    let mode = dark_light::detect().context("detecting the system colour scheme")?;
 
     Ok(match mode {
         Mode::Dark => Colours {

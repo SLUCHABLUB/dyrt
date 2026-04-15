@@ -2,7 +2,7 @@ use chrono::NaiveDate;
 use serde::Deserialize;
 
 // TODO: #[serde(rename_all = "Title Case")]
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Expense {
     #[serde(alias = "Datum")]
