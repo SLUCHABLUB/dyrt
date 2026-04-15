@@ -20,6 +20,8 @@ use plotters::style::text_anchor::VPos;
 pub fn per_day<'expenses>(
     expenses: impl IntoIterator<Item = &'expenses Expense>,
 ) -> anyhow::Result<DynamicImage> {
+    let colours = COLOURS.plotters();
+
     let day_sums = day_sums(expenses);
 
     let start_date = day_sums
@@ -42,13 +44,13 @@ pub fn per_day<'expenses>(
 
     let text_style = TextStyle {
         font: FontDesc::new(FontFamily::SansSerif, 12.0, FontStyle::Normal),
-        color: COLOURS.text.to_backend_color(),
+        color: colours.text.to_backend_color(),
         // Trying to centre the text here makes it, not centred.
         pos: Pos::new(HPos::Left, VPos::Top),
     };
 
     let root = BitMapBackend::with_buffer(&mut image_buffer, image_size).into_drawing_area();
-    root.fill(&COLOURS.background)?;
+    root.fill(&colours.background)?;
 
     let mut chart = ChartBuilder::on(&root)
         .caption("Expenses Over Time", text_style.clone())
@@ -59,21 +61,21 @@ pub fn per_day<'expenses>(
 
     chart
         .configure_mesh()
-        .axis_style(COLOURS.text)
-        .bold_line_style(COLOURS.bold_grid)
-        .light_line_style(COLOURS.light_grid)
+        .axis_style(colours.text)
+        .bold_line_style(colours.bold_grid)
+        .light_line_style(colours.light_grid)
         .label_style(text_style.clone())
         .draw()?;
 
     chart
-        .draw_series(LineSeries::new(day_sums, &COLOURS.graph))?
+        .draw_series(LineSeries::new(day_sums, &colours.graph))?
         .label("Expenses Per Day")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], COLOURS.graph));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], colours.graph));
 
     chart
         .configure_series_labels()
-        .background_style(COLOURS.background)
-        .border_style(COLOURS.border)
+        .background_style(colours.background)
+        .border_style(colours.border)
         .label_font(text_style.clone())
         .draw()?;
 
