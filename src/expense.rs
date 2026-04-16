@@ -9,8 +9,8 @@ pub struct Expense {
     pub date: NaiveDate,
     // #[serde(alias = "Utgift")]
     // pub expense: Box<str>,
-    // #[serde(alias = "Klass")]
-    // pub class: Box<str>,
+    #[serde(alias = "Klass")]
+    pub class: Box<str>,
     #[serde(alias = "Mängd")]
     pub amount: f64,
     // #[serde(alias = "Plats")]
