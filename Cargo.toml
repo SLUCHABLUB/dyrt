@@ -20,3 +20,5 @@ image = "0.25.10"
 plotters="0.3.7"
 ratatui = "0.30.0"
 ratatui-image = { version = "10.0.6", default-features = false, features = ["image-defaults", "crossterm"] }
+rat-salsa = { version = "4.0.3", features = ["rat-widget"] }
+rat-widget = "3.2.1"
