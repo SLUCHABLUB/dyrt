@@ -1,4 +1,3 @@
-use crate::colours::COLOURS;
 use crate::colours::Colours;
 use crate::expense::Expense;
 use crate::processing::day_sums;
@@ -34,6 +33,8 @@ const X_LABEL_AREA_HEIGHT: u32 = 25;
 const Y_LABEL_AREA_WIDTH: u32 = 100;
 const RELATIVE_PIE_RADIUS: f64 = 0.8;
 
+type PlotColours = Colours<RGBColor>;
+
 #[derive(Copy, Clone, Eq, PartialEq, Default, Debug, Sequence)]
 pub enum Plot {
     #[default]
@@ -52,12 +53,15 @@ impl Plot {
     pub fn make_image<'expenses>(
         self,
         expenses: impl IntoIterator<Item = &'expenses Expense>,
+        colours: Colours,
         width: u32,
         height: u32,
     ) -> anyhow::Result<DynamicImage> {
+        let colours = colours.plotters();
+
         match self {
-            Plot::PerDay => per_day(expenses, width, height),
-            Plot::Pie => pie(expenses, width, height),
+            Plot::PerDay => per_day(expenses, colours, width, height),
+            Plot::Pie => pie(expenses, colours, width, height),
         }
     }
 }
@@ -74,14 +78,9 @@ impl Display for Plot {
 fn with_root(
     width: u32,
     height: u32,
-    function: impl FnOnce(
-        &DrawingArea<BitMapBackend, Shift>,
-        Colours<RGBColor>,
-        &TextStyle,
-    ) -> anyhow::Result<()>,
+    colours: PlotColours,
+    function: impl FnOnce(&DrawingArea<BitMapBackend, Shift>, &TextStyle) -> anyhow::Result<()>,
 ) -> anyhow::Result<DynamicImage> {
-    let colours = COLOURS.plotters();
-
     let mut image_buffer = ImageBuffer::new(width, height);
 
     // TODO: Move all text to the TUI.
@@ -96,7 +95,7 @@ fn with_root(
 
     root.fill(&colours.background)?;
 
-    function(&root, colours, &text_style)?;
+    function(&root, &text_style)?;
 
     root.present()?;
 
@@ -107,6 +106,7 @@ fn with_root(
 
 fn per_day<'expenses>(
     expenses: impl IntoIterator<Item = &'expenses Expense>,
+    colours: PlotColours,
     width: u32,
     height: u32,
 ) -> anyhow::Result<DynamicImage> {
@@ -126,7 +126,7 @@ fn per_day<'expenses>(
         .max_by(f64::total_cmp)
         .unwrap_or_default();
 
-    with_root(width, height, |root, colours, text_style| {
+    with_root(width, height, colours, |root, text_style| {
         let mut chart = ChartBuilder::on(root)
             .caption("Expenses Over Time", text_style.clone())
             .margin(10)
@@ -160,6 +160,7 @@ fn per_day<'expenses>(
 
 fn pie<'expenses>(
     expenses: impl IntoIterator<Item = &'expenses Expense>,
+    colours: PlotColours,
     width: u32,
     height: u32,
 ) -> anyhow::Result<DynamicImage> {
@@ -174,22 +175,31 @@ fn pie<'expenses>(
     let image_centre = (width as i32 / 2, height as i32 / 2);
     let radius = min(width, height) as f64 / 2.0 * RELATIVE_PIE_RADIUS;
 
-    let mut classes = Vec::<&str>::new();
-    let mut amounts = Vec::new();
-    let mut colours = Vec::new();
+    let mut slice_classes = Vec::<&str>::new();
+    let mut slice_amounts = Vec::new();
+    let mut slice_colours = Vec::new();
 
     for expense in expenses {
-        if let Some(index) = classes.iter().position(|class| *class == &*expense.class) {
-            amounts[index] += expense.amount;
+        if let Some(index) = slice_classes
+            .iter()
+            .position(|class| *class == &*expense.class)
+        {
+            slice_amounts[index] += expense.amount;
         } else {
-            classes.push(&expense.class);
-            amounts.push(expense.amount);
-            colours.push(colour(expense));
+            slice_classes.push(&expense.class);
+            slice_amounts.push(expense.amount);
+            slice_colours.push(colour(expense));
         }
     }
 
-    with_root(width, height, |root, _, text_style| {
-        let mut pie = Pie::new(&image_centre, &radius, &amounts, &colours, &classes);
+    with_root(width, height, colours, |root, text_style| {
+        let mut pie = Pie::new(
+            &image_centre,
+            &radius,
+            &slice_amounts,
+            &slice_colours,
+            &slice_classes,
+        );
 
         pie.label_style(text_style);
         pie.label_offset(75.0);

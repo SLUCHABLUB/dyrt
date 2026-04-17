@@ -3,28 +3,24 @@ mod expense;
 mod panic;
 mod plot;
 mod processing;
+mod state;
 
-use crate::colours::COLOURS;
-use crate::expense::Expense;
 use crate::panic::set_panic_hook;
 use crate::plot::Plot;
 use crate::processing::filter_to_period;
 use crate::processing::months;
 use crate::processing::years;
-use anyhow::Context as _;
-use anyhow::bail;
-use chrono::Month;
+use crate::state::Context;
+use crate::state::State;
 use clap::Parser;
 use enum_iterator::all;
 use itertools::chain;
 use rat_salsa::Control;
 use rat_salsa::RunConfig;
-use rat_salsa::SalsaAppContext;
 use rat_salsa::mock;
 use rat_salsa::poll::PollCrossterm;
 use rat_salsa::run_tui;
 use rat_widget::choice::Choice;
-use rat_widget::choice::ChoiceState;
 use rat_widget::event::HandleEvent;
 use rat_widget::event::MouseOnly;
 use rat_widget::event::Regular;
@@ -45,20 +41,8 @@ use ratatui::widgets::Widget as _;
 use ratatui_image::FilterType;
 use ratatui_image::Image;
 use ratatui_image::Resize;
-use ratatui_image::picker::Picker;
 use std::iter::once;
 use std::path::Path;
-
-type Context = SalsaAppContext<Event, anyhow::Error>;
-
-struct State {
-    expenses: &'static [Expense],
-    picker: Picker,
-
-    plot_tabs: TabbedState,
-    year_input: ChoiceState<i32>,
-    month_input: ChoiceState<Option<Month>>,
-}
 
 #[derive(Parser)]
 struct Arguments {
@@ -68,32 +52,7 @@ struct Arguments {
 fn main() -> anyhow::Result<()> {
     let arguments = Arguments::parse();
 
-    let mut picker = Picker::from_query_stdio()?;
-    picker.set_background_color(COLOURS.rgba().background);
-
-    let expenses: &[_] = csv::Reader::from_path(&arguments.path)
-        .with_context(|| format!("reading file: `{}`", arguments.path.display()))?
-        .deserialize::<Expense>()
-        .collect::<Result<Vec<_>, _>>()?
-        .leak();
-
-    if expenses.is_empty() {
-        bail!("there are no expenses to analyse");
-    }
-
-    let mut state = State {
-        expenses,
-        picker,
-
-        plot_tabs: TabbedState::new(),
-        year_input: ChoiceState::new(),
-        month_input: ChoiceState::new(),
-    };
-
-    state
-        .year_input
-        .core
-        .set_value(*years(expenses).last().unwrap());
+    let mut state = State::new(arguments)?;
 
     set_panic_hook();
 
@@ -165,6 +124,7 @@ fn render(
 
     let image = plot_type.make_image(
         expenses,
+        state.colours,
         character_width as u32 * image_area.width as u32,
         character_height as u32 * image_area.height as u32,
     )?;

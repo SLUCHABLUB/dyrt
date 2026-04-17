@@ -4,8 +4,6 @@ use image::Pixel;
 use image::Rgb;
 use image::Rgba;
 use plotters::style::RGBColor;
-use std::process::exit;
-use std::sync::LazyLock;
 
 #[derive(Copy, Clone)]
 pub struct Colours<Colour = Rgb<u8>> {
@@ -43,14 +41,7 @@ impl<Colour> Colours<Colour> {
     }
 }
 
-pub static COLOURS: LazyLock<Colours> = LazyLock::new(|| {
-    colours().unwrap_or_else(|error| {
-        eprintln!("Error: {error}");
-        exit(1)
-    })
-});
-
-fn colours() -> anyhow::Result<Colours> {
+pub fn detect_colours() -> anyhow::Result<Colours> {
     let mode = dark_light::detect().context("detecting the system colour scheme")?;
 
     Ok(match mode {
