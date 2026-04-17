@@ -42,8 +42,8 @@ use ratatui::widgets::Block;
 use ratatui::widgets::StatefulWidget;
 use ratatui::widgets::Widget as _;
 use ratatui_image::FilterType;
+use ratatui_image::Image;
 use ratatui_image::Resize;
-use ratatui_image::StatefulImage;
 use ratatui_image::picker::Picker;
 use std::iter::once;
 use std::path::Path;
@@ -143,10 +143,6 @@ fn render(
         state.year_input.core.value(),
         state.month_input.core.value(),
     );
-    let image = plot_type.make_image(expenses)?;
-    let mut image_state = state.picker.new_resize_protocol(image);
-
-    let image = StatefulImage::new().resize(Resize::Scale(Some(FilterType::Gaussian)));
 
     // Calculate Areas
 
@@ -162,6 +158,22 @@ fn render(
     .areas(bar_area);
     let image_area = block.inner(content_area);
 
+    // Create Area-Dependent Widgets
+
+    let (character_width, character_height) = state.picker.font_size();
+
+    let image = plot_type.make_image(
+        expenses,
+        character_width as u32 * image_area.width as u32,
+        character_height as u32 * image_area.height as u32,
+    )?;
+    let protocol =
+        state
+            .picker
+            .new_protocol(image, image_area, Resize::Scale(Some(FilterType::Gaussian)))?;
+
+    let image = Image::new(&protocol);
+
     // Render Widgets
 
     tabs.render(tab_area, buffer, &mut state.plot_tabs);
@@ -170,7 +182,7 @@ fn render(
     month_input.render(month_input_area, buffer, &mut state.month_input);
 
     block.render(content_area, buffer);
-    image.render(image_area, buffer, &mut image_state);
+    image.render(image_area, buffer);
 
     // Render Popups
 
@@ -181,8 +193,10 @@ fn render(
 }
 
 fn event(event: &Event, state: &mut State, _: &mut Context) -> anyhow::Result<Control<Event>> {
-    if matches!(event, ct_event!(key press CONTROL-'q')) {
-        return Ok(Control::Quit);
+    match event {
+        ct_event!(key press CONTROL-'q') => return Ok(Control::Quit),
+        ct_event!(resized) => return Ok(Control::Changed),
+        _ => (),
     }
 
     event_flow!(state.year_input.handle(event, Regular));

@@ -29,9 +29,6 @@ use std::hash::Hash;
 use std::hash::Hasher as _;
 
 // TODO: Calculate these dynamically.
-const IMAGE_WIDTH: u32 = 1920;
-const IMAGE_HEIGHT: u32 = 1080;
-const IMAGE_SIZE: (u32, u32) = (IMAGE_WIDTH, IMAGE_HEIGHT);
 const FONT_SIZE: f64 = 32.0;
 const X_LABEL_AREA_HEIGHT: u32 = 25;
 const Y_LABEL_AREA_WIDTH: u32 = 100;
@@ -55,10 +52,12 @@ impl Plot {
     pub fn make_image<'expenses>(
         self,
         expenses: impl IntoIterator<Item = &'expenses Expense>,
+        width: u32,
+        height: u32,
     ) -> anyhow::Result<DynamicImage> {
         match self {
-            Plot::PerDay => per_day(expenses),
-            Plot::Pie => pie(expenses),
+            Plot::PerDay => per_day(expenses, width, height),
+            Plot::Pie => pie(expenses, width, height),
         }
     }
 }
@@ -73,6 +72,8 @@ impl Display for Plot {
 }
 
 fn with_root(
+    width: u32,
+    height: u32,
     function: impl FnOnce(
         &DrawingArea<BitMapBackend, Shift>,
         Colours<RGBColor>,
@@ -81,7 +82,7 @@ fn with_root(
 ) -> anyhow::Result<DynamicImage> {
     let colours = COLOURS.plotters();
 
-    let mut image_buffer = ImageBuffer::new(IMAGE_WIDTH, IMAGE_HEIGHT);
+    let mut image_buffer = ImageBuffer::new(width, height);
 
     // TODO: Move all text to the TUI.
     let text_style = TextStyle {
@@ -91,7 +92,7 @@ fn with_root(
         pos: Pos::new(HPos::Left, VPos::Top),
     };
 
-    let root = BitMapBackend::with_buffer(&mut image_buffer, IMAGE_SIZE).into_drawing_area();
+    let root = BitMapBackend::with_buffer(&mut image_buffer, (width, height)).into_drawing_area();
 
     root.fill(&colours.background)?;
 
@@ -106,6 +107,8 @@ fn with_root(
 
 fn per_day<'expenses>(
     expenses: impl IntoIterator<Item = &'expenses Expense>,
+    width: u32,
+    height: u32,
 ) -> anyhow::Result<DynamicImage> {
     let day_sums = day_sums(expenses);
 
@@ -123,7 +126,7 @@ fn per_day<'expenses>(
         .max_by(f64::total_cmp)
         .unwrap_or_default();
 
-    with_root(|root, colours, text_style| {
+    with_root(width, height, |root, colours, text_style| {
         let mut chart = ChartBuilder::on(root)
             .caption("Expenses Over Time", text_style.clone())
             .margin(10)
@@ -157,6 +160,8 @@ fn per_day<'expenses>(
 
 fn pie<'expenses>(
     expenses: impl IntoIterator<Item = &'expenses Expense>,
+    width: u32,
+    height: u32,
 ) -> anyhow::Result<DynamicImage> {
     fn colour(expense: &Expense) -> RGBColor {
         let mut state = DefaultHasher::new();
@@ -166,8 +171,8 @@ fn pie<'expenses>(
         RGBColor(red, green, blue)
     }
 
-    let image_centre = (IMAGE_WIDTH as i32 / 2, IMAGE_HEIGHT as i32 / 2);
-    let radius = min(IMAGE_WIDTH, IMAGE_HEIGHT) as f64 / 2.0 * RELATIVE_PIE_RADIUS;
+    let image_centre = (width as i32 / 2, height as i32 / 2);
+    let radius = min(width, height) as f64 / 2.0 * RELATIVE_PIE_RADIUS;
 
     let mut classes = Vec::<&str>::new();
     let mut amounts = Vec::new();
@@ -183,7 +188,7 @@ fn pie<'expenses>(
         }
     }
 
-    with_root(|root, _, text_style| {
+    with_root(width, height, |root, _, text_style| {
         let mut pie = Pie::new(&image_centre, &radius, &amounts, &colours, &classes);
 
         pie.label_style(text_style);
