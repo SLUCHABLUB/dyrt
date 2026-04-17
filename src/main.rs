@@ -46,7 +46,6 @@ use ratatui_image::StatefulImage;
 use ratatui_image::picker::Picker;
 use std::iter::once;
 use std::path::Path;
-use std::sync::LazyLock;
 
 type Context = SalsaAppContext<Event, anyhow::Error>;
 
@@ -66,16 +65,15 @@ struct Arguments {
 
 fn main() -> anyhow::Result<()> {
     let arguments = Arguments::parse();
-    LazyLock::force(&COLOURS);
+
     let mut picker = Picker::from_query_stdio()?;
     picker.set_background_color(COLOURS.rgba().background);
 
-    let expenses = csv::Reader::from_path(&arguments.path)
+    let expenses: &[_] = csv::Reader::from_path(&arguments.path)
         .with_context(|| format!("reading file: `{}`", arguments.path.display()))?
         .deserialize::<Expense>()
-        .collect::<Result<_, _>>()?;
-
-    let expenses: &[_] = Vec::leak(expenses);
+        .collect::<Result<Vec<_>, _>>()?
+        .leak();
 
     if expenses.is_empty() {
         bail!("there are no expenses to analyse");
