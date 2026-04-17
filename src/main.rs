@@ -1,10 +1,12 @@
 mod colours;
 mod expense;
+mod panic;
 mod plot;
 mod processing;
 
 use crate::colours::COLOURS;
 use crate::expense::Expense;
+use crate::panic::set_panic_hook;
 use crate::plot::Plot;
 use crate::processing::years;
 use anyhow::Context as _;
@@ -31,17 +33,7 @@ use rat_widget::tabbed::TabType;
 use rat_widget::tabbed::Tabbed;
 use rat_widget::tabbed::TabbedState;
 use ratatui::buffer::Buffer;
-#[cfg(not(windows))]
-use ratatui::crossterm::ExecutableCommand as _;
-use ratatui::crossterm::cursor::DisableBlinking;
-use ratatui::crossterm::cursor::SetCursorStyle;
-use ratatui::crossterm::event::DisableBracketedPaste;
-use ratatui::crossterm::event::DisableMouseCapture;
 use ratatui::crossterm::event::Event;
-#[cfg(not(windows))]
-use ratatui::crossterm::event::PopKeyboardEnhancementFlags;
-use ratatui::crossterm::terminal::LeaveAlternateScreen;
-use ratatui::crossterm::terminal::disable_raw_mode;
 use ratatui::layout::Constraint;
 use ratatui::layout::Layout;
 use ratatui::layout::Rect;
@@ -52,10 +44,7 @@ use ratatui_image::FilterType;
 use ratatui_image::Resize;
 use ratatui_image::StatefulImage;
 use ratatui_image::picker::Picker;
-use std::io::stdout;
 use std::iter::once;
-use std::panic::set_hook;
-use std::panic::take_hook;
 use std::path::Path;
 use std::sync::LazyLock;
 
@@ -106,21 +95,7 @@ fn main() -> anyhow::Result<()> {
         .core
         .set_value(*years(expenses).last().unwrap());
 
-    let hook = take_hook();
-    set_hook(Box::new(move |info| {
-        // Copied from the private function `rat_salsa::framework::shutdown_terminal`.
-        let _ = disable_raw_mode();
-
-        #[cfg(not(windows))]
-        let _ = stdout().execute(PopKeyboardEnhancementFlags);
-        let _ = stdout().execute(SetCursorStyle::DefaultUserShape);
-        let _ = stdout().execute(DisableBlinking);
-        let _ = stdout().execute(DisableBracketedPaste);
-        let _ = stdout().execute(DisableMouseCapture);
-        let _ = stdout().execute(LeaveAlternateScreen);
-
-        hook(info);
-    }));
+    set_panic_hook();
 
     run_tui(
         mock::init,
