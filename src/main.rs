@@ -9,6 +9,7 @@ use crate::expense::Expense;
 use crate::panic::set_panic_hook;
 use crate::plot::Plot;
 use crate::processing::filter_to_period;
+use crate::processing::months;
 use crate::processing::years;
 use anyhow::Context as _;
 use anyhow::bail;
@@ -117,7 +118,7 @@ fn render(
         .nth(state.plot_tabs.selected().unwrap_or(0))
         .unwrap();
 
-    let months = (1..=12).filter_map(|number| Month::try_from(number).ok());
+    let months = months(state.expenses, state.year_input.core.value());
     let years = years(state.expenses);
 
     // Create Widgets
@@ -132,7 +133,7 @@ fn render(
     let (month_input, month_input_popup) = Choice::new()
         .items(chain(
             once((None, "All year")),
-            months.map(|month| (Some(month), month.name())),
+            months.iter().map(|month| (Some(*month), month.name())),
         ))
         .into_widgets();
 

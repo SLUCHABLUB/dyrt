@@ -26,6 +26,23 @@ pub fn years<'expenses>(expenses: impl IntoIterator<Item = &'expenses Expense>) 
         .collect()
 }
 
+pub fn months<'expenses>(
+    expenses: impl IntoIterator<Item = &'expenses Expense>,
+    year: i32,
+) -> Vec<Month> {
+    expenses
+        .into_iter()
+        .filter(|expense| expense.date.year() == year)
+        .map(|expense| expense.date.month())
+        .sorted()
+        .dedup()
+        .map(u8::try_from)
+        .map(Result::unwrap) // `month`'s return value is on [1, 12]
+        .map(Month::try_from)
+        .map(Result::unwrap) // `month`'s return value is on [1, 12]
+        .collect()
+}
+
 pub fn filter_to_period<'expenses>(
     expenses: impl IntoIterator<Item = &'expenses Expense>,
     year: i32,
