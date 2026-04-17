@@ -143,14 +143,33 @@ fn render(
         .nth(state.plot_tabs.selected().unwrap_or(0))
         .unwrap();
 
+    let months = (1..=12).filter_map(|number| Month::try_from(number).ok());
+    let years = years(state.expenses);
+
+    // Create Widgets
+
     let tabs = Tabbed::new()
         .tab_type(TabType::Glued)
         .tabs(all::<Plot>().map(|plot| plot.to_string()));
+
+    let (year_input, year_input_popup) = Choice::new()
+        .items(years.iter().map(|year| (*year, year.to_string())))
+        .into_widgets();
+    let (month_input, month_input_popup) = Choice::new()
+        .items(chain(
+            once((None, "All year")),
+            months.map(|month| (Some(month), month.name())),
+        ))
+        .into_widgets();
 
     let block = Block::bordered().title(plot_type.title());
 
     let image = plot_type.make_image(state.expenses)?;
     let mut image_state = state.picker.new_resize_protocol(image);
+
+    let image = StatefulImage::new().resize(Resize::Scale(Some(FilterType::Gaussian)));
+
+    // Calculate Areas
 
     const CHOICE_PADDING: u16 = 3;
 
@@ -164,28 +183,17 @@ fn render(
     .areas(bar_area);
     let image_area = block.inner(content_area);
 
+    // Render Widgets
+
     tabs.render(tab_area, buffer, &mut state.plot_tabs);
-
-    let months = (1..=12).filter_map(|number| Month::try_from(number).ok());
-    let years = years(state.expenses);
-
-    let (year_input, year_input_popup) = Choice::new()
-        .items(years.iter().map(|year| (*year, year.to_string())))
-        .into_widgets();
-    let (month_input, month_input_popup) = Choice::new()
-        .items(chain(
-            once((None, "All year")),
-            months.map(|month| (Some(month), month.name())),
-        ))
-        .into_widgets();
 
     year_input.render(year_input_area, buffer, &mut state.year_input);
     month_input.render(month_input_area, buffer, &mut state.month_input);
 
     block.render(content_area, buffer);
-    StatefulImage::new()
-        .resize(Resize::Scale(Some(FilterType::Gaussian)))
-        .render(image_area, buffer, &mut image_state);
+    image.render(image_area, buffer, &mut image_state);
+
+    // Render Popups
 
     year_input_popup.render(area, buffer, &mut state.year_input);
     month_input_popup.render(area, buffer, &mut state.month_input);
