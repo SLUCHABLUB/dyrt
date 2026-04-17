@@ -8,6 +8,7 @@ use crate::colours::COLOURS;
 use crate::expense::Expense;
 use crate::panic::set_panic_hook;
 use crate::plot::Plot;
+use crate::processing::filter_to_period;
 use crate::processing::years;
 use anyhow::Context as _;
 use anyhow::bail;
@@ -137,7 +138,12 @@ fn render(
 
     let block = Block::bordered().title(plot_type.title());
 
-    let image = plot_type.make_image(state.expenses)?;
+    let expenses = filter_to_period(
+        state.expenses,
+        state.year_input.core.value(),
+        state.month_input.core.value(),
+    );
+    let image = plot_type.make_image(expenses)?;
     let mut image_state = state.picker.new_resize_protocol(image);
 
     let image = StatefulImage::new().resize(Resize::Scale(Some(FilterType::Gaussian)));
