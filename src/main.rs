@@ -53,7 +53,7 @@ fn main() -> anyhow::Result<()> {
     let mut picker = Picker::from_query_stdio()?;
     picker.set_background_color(COLOURS.rgba().background);
 
-    let expenses: Vec<_> = csv::Reader::from_path(&arguments.path)
+    let expenses = csv::Reader::from_path(&arguments.path)
         .with_context(|| format!("reading file: `{}`", arguments.path.display()))?
         .deserialize::<Expense>()
         .collect::<Result<_, _>>()?;
