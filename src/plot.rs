@@ -45,6 +45,13 @@ pub enum Plot {
 }
 
 impl Plot {
+    pub fn title(self) -> &'static str {
+        match self {
+            Plot::PerDay => "Expenses Per Day",
+            Plot::Pie => "Expenses Per Class",
+        }
+    }
+
     pub fn make_image<'expenses>(
         self,
         expenses: impl IntoIterator<Item = &'expenses Expense>,

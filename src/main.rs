@@ -7,17 +7,25 @@ use crate::colours::COLOURS;
 use crate::expense::Expense;
 use crate::plot::Plot;
 use anyhow::Context as _;
+use anyhow::bail;
+use chrono::Month;
 use clap::Parser;
 use enum_iterator::all;
-use enum_iterator::next_cycle;
-use enum_iterator::previous_cycle;
 use rat_salsa::Control;
 use rat_salsa::RunConfig;
 use rat_salsa::SalsaAppContext;
 use rat_salsa::mock;
 use rat_salsa::poll::PollCrossterm;
 use rat_salsa::run_tui;
+use rat_widget::choice::ChoiceState;
+use rat_widget::event::HandleEvent;
+use rat_widget::event::MouseOnly;
+use rat_widget::event::TabbedOutcome;
 use rat_widget::event::ct_event;
+use rat_widget::event::event_flow;
+use rat_widget::tabbed::TabType;
+use rat_widget::tabbed::Tabbed;
+use rat_widget::tabbed::TabbedState;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::Event;
 use ratatui::layout::Constraint;
@@ -25,7 +33,6 @@ use ratatui::layout::Layout;
 use ratatui::layout::Rect;
 use ratatui::widgets::Block;
 use ratatui::widgets::StatefulWidget;
-use ratatui::widgets::Tabs;
 use ratatui::widgets::Widget as _;
 use ratatui_image::FilterType;
 use ratatui_image::Resize;
@@ -37,9 +44,12 @@ use std::sync::LazyLock;
 type Context = SalsaAppContext<Event, anyhow::Error>;
 
 struct State {
-    plot_type: Plot,
     expenses: &'static [Expense],
     picker: Picker,
+
+    plot_tabs: TabbedState,
+    _year_input: ChoiceState<i32>,
+    _month_input: ChoiceState<Option<Month>>,
 }
 
 #[derive(Parser)]
@@ -60,10 +70,17 @@ fn main() -> anyhow::Result<()> {
 
     let expenses = Vec::leak(expenses);
 
+    if expenses.is_empty() {
+        bail!("there are no expenses to analyse");
+    }
+
     let mut state = State {
-        plot_type: Plot::default(),
         expenses,
         picker,
+
+        plot_tabs: TabbedState::new(),
+        _year_input: ChoiceState::new(),
+        _month_input: ChoiceState::new(),
     };
 
     run_tui(
@@ -83,19 +100,26 @@ fn render(
     state: &mut State,
     _: &mut Context,
 ) -> anyhow::Result<()> {
-    let tabs = Tabs::new(all::<Plot>().map(|plot| plot.to_string()))
-        .select(all::<Plot>().position(|plot| plot == state.plot_type));
+    let plot_type = all::<Plot>()
+        .nth(state.plot_tabs.selected().unwrap_or(0))
+        .unwrap();
 
-    let block = Block::bordered().title("Expenses Over Time");
+    let tabs = Tabbed::new()
+        .tab_type(TabType::Glued)
+        .tabs(all::<Plot>().map(|plot| plot.to_string()));
 
-    let image = state.plot_type.make_image(state.expenses)?;
+    let block = Block::bordered().title(plot_type.title());
+
+    let image = plot_type.make_image(state.expenses)?;
     let mut image_state = state.picker.new_resize_protocol(image);
 
-    let [tab_area, content_area] =
-        Layout::vertical([Constraint::Max(3), Constraint::Fill(1)]).areas(area);
+    let [bar_area, content_area] =
+        Layout::vertical([Constraint::Max(1), Constraint::Fill(1)]).areas(area);
+    let [tab_area, _period_input_area] =
+        Layout::horizontal([Constraint::Fill(1); 2]).areas(bar_area);
     let image_area = block.inner(content_area);
 
-    tabs.render(tab_area, buffer);
+    tabs.render(tab_area, buffer, &mut state.plot_tabs);
     block.render(content_area, buffer);
     StatefulImage::new()
         .resize(Resize::Scale(Some(FilterType::Gaussian)))
@@ -105,25 +129,36 @@ fn render(
 }
 
 fn event(event: &Event, state: &mut State, _: &mut Context) -> anyhow::Result<Control<Event>> {
+    if matches!(event, ct_event!(key press CONTROL-'q')) {
+        return Ok(Control::Quit);
+    }
+
+    event_flow!(handle_tab_event(event, &mut state.plot_tabs));
+
+    // TODO: Zooming and panning the graph.
+
+    Ok(Control::Continue)
+}
+
+fn handle_tab_event(event: &Event, state: &mut TabbedState) -> TabbedOutcome {
+    fn cycle_tab(state: &mut TabbedState, by: isize) -> TabbedOutcome {
+        let tab_count = state.tab_title_areas.len() as isize;
+        let selected = state.selected().unwrap_or(0) as isize;
+        let new = (selected + by).rem_euclid(tab_count);
+
+        state.select(Some(new as usize));
+
+        TabbedOutcome::Changed
+    }
+
+    event_flow!(return state.handle(event, MouseOnly));
+
     match event {
-        ct_event!(key press CONTROL-'q') => Ok(Control::Quit),
-        ct_event!(keycode press Tab) | ct_event!(keycode press Right) => {
-            state.plot_type = next_cycle(&state.plot_type);
-            Ok(Control::Changed)
+        ct_event!(keycode press Tab) => cycle_tab(state, 1),
+        ct_event!(keycode press BackTab) | ct_event!(keycode press SHIFT-Tab) => {
+            cycle_tab(state, -1)
         }
-        ct_event!(keycode press BackTab)
-        | ct_event!(keycode press SHIFT-Tab)
-        | ct_event!(keycode press Left) => {
-            state.plot_type = previous_cycle(&state.plot_type);
-            Ok(Control::Changed)
-        }
-        ct_event!(mouse any for _event) => {
-            // TODO: Clicking buttons.
-            // TODO: Zooming the graph.
-            // TODO: Panning the graph.
-            Ok(Control::Continue)
-        }
-        _ => Ok(Control::Continue),
+        _ => TabbedOutcome::Continue,
     }
 }
 
