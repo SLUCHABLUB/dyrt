@@ -6,20 +6,24 @@ mod processing;
 use crate::colours::COLOURS;
 use crate::expense::Expense;
 use crate::plot::Plot;
+use crate::processing::years;
 use anyhow::Context as _;
 use anyhow::bail;
 use chrono::Month;
 use clap::Parser;
 use enum_iterator::all;
+use itertools::chain;
 use rat_salsa::Control;
 use rat_salsa::RunConfig;
 use rat_salsa::SalsaAppContext;
 use rat_salsa::mock;
 use rat_salsa::poll::PollCrossterm;
 use rat_salsa::run_tui;
+use rat_widget::choice::Choice;
 use rat_widget::choice::ChoiceState;
 use rat_widget::event::HandleEvent;
 use rat_widget::event::MouseOnly;
+use rat_widget::event::Regular;
 use rat_widget::event::TabbedOutcome;
 use rat_widget::event::ct_event;
 use rat_widget::event::event_flow;
@@ -27,7 +31,17 @@ use rat_widget::tabbed::TabType;
 use rat_widget::tabbed::Tabbed;
 use rat_widget::tabbed::TabbedState;
 use ratatui::buffer::Buffer;
+#[cfg(not(windows))]
+use ratatui::crossterm::ExecutableCommand as _;
+use ratatui::crossterm::cursor::DisableBlinking;
+use ratatui::crossterm::cursor::SetCursorStyle;
+use ratatui::crossterm::event::DisableBracketedPaste;
+use ratatui::crossterm::event::DisableMouseCapture;
 use ratatui::crossterm::event::Event;
+#[cfg(not(windows))]
+use ratatui::crossterm::event::PopKeyboardEnhancementFlags;
+use ratatui::crossterm::terminal::LeaveAlternateScreen;
+use ratatui::crossterm::terminal::disable_raw_mode;
 use ratatui::layout::Constraint;
 use ratatui::layout::Layout;
 use ratatui::layout::Rect;
@@ -38,6 +52,10 @@ use ratatui_image::FilterType;
 use ratatui_image::Resize;
 use ratatui_image::StatefulImage;
 use ratatui_image::picker::Picker;
+use std::io::stdout;
+use std::iter::once;
+use std::panic::set_hook;
+use std::panic::take_hook;
 use std::path::Path;
 use std::sync::LazyLock;
 
@@ -48,8 +66,8 @@ struct State {
     picker: Picker,
 
     plot_tabs: TabbedState,
-    _year_input: ChoiceState<i32>,
-    _month_input: ChoiceState<Option<Month>>,
+    year_input: ChoiceState<i32>,
+    month_input: ChoiceState<Option<Month>>,
 }
 
 #[derive(Parser)]
@@ -68,7 +86,7 @@ fn main() -> anyhow::Result<()> {
         .deserialize::<Expense>()
         .collect::<Result<_, _>>()?;
 
-    let expenses = Vec::leak(expenses);
+    let expenses: &[_] = Vec::leak(expenses);
 
     if expenses.is_empty() {
         bail!("there are no expenses to analyse");
@@ -79,9 +97,30 @@ fn main() -> anyhow::Result<()> {
         picker,
 
         plot_tabs: TabbedState::new(),
-        _year_input: ChoiceState::new(),
-        _month_input: ChoiceState::new(),
+        year_input: ChoiceState::new(),
+        month_input: ChoiceState::new(),
     };
+
+    state
+        .year_input
+        .core
+        .set_value(*years(expenses).last().unwrap());
+
+    let hook = take_hook();
+    set_hook(Box::new(move |info| {
+        // Copied from the private function `rat_salsa::framework::shutdown_terminal`.
+        let _ = disable_raw_mode();
+
+        #[cfg(not(windows))]
+        let _ = stdout().execute(PopKeyboardEnhancementFlags);
+        let _ = stdout().execute(SetCursorStyle::DefaultUserShape);
+        let _ = stdout().execute(DisableBlinking);
+        let _ = stdout().execute(DisableBracketedPaste);
+        let _ = stdout().execute(DisableMouseCapture);
+        let _ = stdout().execute(LeaveAlternateScreen);
+
+        hook(info);
+    }));
 
     run_tui(
         mock::init,
@@ -113,17 +152,43 @@ fn render(
     let image = plot_type.make_image(state.expenses)?;
     let mut image_state = state.picker.new_resize_protocol(image);
 
+    const CHOICE_PADDING: u16 = 3;
+
     let [bar_area, content_area] =
-        Layout::vertical([Constraint::Max(1), Constraint::Fill(1)]).areas(area);
-    let [tab_area, _period_input_area] =
-        Layout::horizontal([Constraint::Fill(1); 2]).areas(bar_area);
+        Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(area);
+    let [tab_area, year_input_area, month_input_area] = Layout::horizontal([
+        Constraint::Fill(1),
+        Constraint::Length(4 + CHOICE_PADDING),
+        Constraint::Length(9 + CHOICE_PADDING),
+    ])
+    .areas(bar_area);
     let image_area = block.inner(content_area);
 
     tabs.render(tab_area, buffer, &mut state.plot_tabs);
+
+    let months = (1..=12).filter_map(|number| Month::try_from(number).ok());
+    let years = years(state.expenses);
+
+    let (year_input, year_input_popup) = Choice::new()
+        .items(years.iter().map(|year| (*year, year.to_string())))
+        .into_widgets();
+    let (month_input, month_input_popup) = Choice::new()
+        .items(chain(
+            once((None, "All year")),
+            months.map(|month| (Some(month), month.name())),
+        ))
+        .into_widgets();
+
+    year_input.render(year_input_area, buffer, &mut state.year_input);
+    month_input.render(month_input_area, buffer, &mut state.month_input);
+
     block.render(content_area, buffer);
     StatefulImage::new()
         .resize(Resize::Scale(Some(FilterType::Gaussian)))
         .render(image_area, buffer, &mut image_state);
+
+    year_input_popup.render(area, buffer, &mut state.year_input);
+    month_input_popup.render(area, buffer, &mut state.month_input);
 
     Ok(())
 }
@@ -133,6 +198,8 @@ fn event(event: &Event, state: &mut State, _: &mut Context) -> anyhow::Result<Co
         return Ok(Control::Quit);
     }
 
+    event_flow!(state.year_input.handle(event, Regular));
+    event_flow!(state.month_input.handle(event, Regular));
     event_flow!(handle_tab_event(event, &mut state.plot_tabs));
 
     // TODO: Zooming and panning the graph.
