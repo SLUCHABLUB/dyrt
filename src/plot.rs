@@ -76,6 +76,7 @@ fn with_root(
 
     let mut image_buffer = ImageBuffer::new(IMAGE_WIDTH, IMAGE_HEIGHT);
 
+    // TODO: Move all text to the TUI.
     let text_style = TextStyle {
         font: FontDesc::new(FontFamily::SansSerif, FONT_SIZE, FontStyle::Normal),
         color: colours.text.to_backend_color(),
