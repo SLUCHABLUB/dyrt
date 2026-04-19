@@ -59,8 +59,8 @@ fn main() -> anyhow::Result<()> {
     run_tui(
         mock::init,
         render,
-        event,
-        error,
+        handle_event,
+        handle_error,
         &mut Context::default(),
         &mut state,
         RunConfig::default()?.poll(PollCrossterm),
@@ -153,7 +153,11 @@ fn render(
     Ok(())
 }
 
-fn event(event: &Event, state: &mut State, _: &mut Context) -> anyhow::Result<Control<Event>> {
+fn handle_event(
+    event: &Event,
+    state: &mut State,
+    _: &mut Context,
+) -> anyhow::Result<Control<Event>> {
     match event {
         ct_event!(key press CONTROL-'q') => return Ok(Control::Quit),
         ct_event!(resized) => return Ok(Control::Changed),
@@ -191,6 +195,10 @@ fn handle_tab_event(event: &Event, state: &mut TabbedState) -> TabbedOutcome {
     }
 }
 
-fn error(error: anyhow::Error, _: &mut State, _: &mut Context) -> anyhow::Result<Control<Event>> {
+fn handle_error(
+    error: anyhow::Error,
+    _: &mut State,
+    _: &mut Context,
+) -> anyhow::Result<Control<Event>> {
     Err(error)
 }
