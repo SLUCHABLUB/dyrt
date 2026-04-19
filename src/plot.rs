@@ -5,12 +5,17 @@ use enum_iterator::Sequence;
 use image::DynamicImage;
 use image::ImageBuffer;
 use plotters::chart::ChartBuilder;
+use plotters::chart::ChartContext;
 use plotters::coord::Shift;
+use plotters::coord::ranged1d::AsRangedCoord;
+use plotters::coord::ranged1d::ValueFormatter;
 use plotters::prelude::BitMapBackend;
+use plotters::prelude::Cartesian2d;
 use plotters::prelude::DrawingArea;
 use plotters::prelude::IntoDrawingArea;
 use plotters::prelude::PathElement;
 use plotters::prelude::Pie;
+use plotters::prelude::Ranged;
 use plotters::series::LineSeries;
 use plotters::style::Color as _;
 use plotters::style::FontDesc;
@@ -79,7 +84,10 @@ fn with_root(
     width: u32,
     height: u32,
     colours: PlotColours,
-    function: impl FnOnce(&DrawingArea<BitMapBackend, Shift>, &TextStyle) -> anyhow::Result<()>,
+    function: impl for<'root> FnOnce(
+        &DrawingArea<BitMapBackend<'root>, Shift>,
+        &TextStyle,
+    ) -> anyhow::Result<()>,
 ) -> anyhow::Result<DynamicImage> {
     let mut image_buffer = ImageBuffer::new(width, height);
 
@@ -104,6 +112,55 @@ fn with_root(
     Ok(DynamicImage::ImageRgb8(image_buffer))
 }
 
+fn with_chart<XRange, YRange, Function>(
+    width: u32,
+    height: u32,
+    colours: PlotColours,
+    x_range: XRange,
+    y_range: YRange,
+    function: Function,
+) -> anyhow::Result<DynamicImage>
+where
+    XRange: AsRangedCoord + 'static,
+    YRange: AsRangedCoord + 'static,
+    XRange::CoordDescType: Ranged + ValueFormatter<<XRange::CoordDescType as Ranged>::ValueType>,
+    YRange::CoordDescType: Ranged + ValueFormatter<<YRange::CoordDescType as Ranged>::ValueType>,
+    Function: for<'chart> FnOnce(
+        &mut ChartContext<
+            'chart,
+            BitMapBackend<'chart>,
+            Cartesian2d<XRange::CoordDescType, YRange::CoordDescType>,
+        >,
+    ) -> anyhow::Result<()>,
+{
+    with_root(width, height, colours, move |root, text_style| {
+        let mut chart = ChartBuilder::on(root)
+            .margin(10)
+            .x_label_area_size(X_LABEL_AREA_HEIGHT)
+            .y_label_area_size(Y_LABEL_AREA_WIDTH)
+            .build_cartesian_2d(x_range, y_range)?;
+
+        chart
+            .configure_mesh()
+            .axis_style(colours.text)
+            .bold_line_style(colours.bold_grid)
+            .light_line_style(colours.light_grid)
+            .label_style(text_style.clone())
+            .draw()?;
+
+        function(&mut chart)?;
+
+        chart
+            .configure_series_labels()
+            .background_style(colours.background)
+            .border_style(colours.border)
+            .label_font(text_style.clone())
+            .draw()?;
+
+        Ok(())
+    })
+}
+
 fn per_day<'expenses>(
     expenses: impl IntoIterator<Item = &'expenses Expense>,
     colours: PlotColours,
@@ -126,36 +183,21 @@ fn per_day<'expenses>(
         .max_by(f64::total_cmp)
         .unwrap_or_default();
 
-    with_root(width, height, colours, |root, text_style| {
-        let mut chart = ChartBuilder::on(root)
-            .caption("Expenses Over Time", text_style.clone())
-            .margin(10)
-            .x_label_area_size(X_LABEL_AREA_HEIGHT)
-            .y_label_area_size(Y_LABEL_AREA_WIDTH)
-            .build_cartesian_2d(start_date..end_date, 0.0..max_expense)?;
+    with_chart(
+        width,
+        height,
+        colours,
+        start_date..end_date,
+        0.0..max_expense,
+        move |chart| {
+            chart
+                .draw_series(LineSeries::new(day_sums, colours.graph))?
+                .label("Expenses Per Day")
+                .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], colours.graph));
 
-        chart
-            .configure_mesh()
-            .axis_style(colours.text)
-            .bold_line_style(colours.bold_grid)
-            .light_line_style(colours.light_grid)
-            .label_style(text_style.clone())
-            .draw()?;
-
-        chart
-            .draw_series(LineSeries::new(day_sums, &colours.graph))?
-            .label("Expenses Per Day")
-            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], colours.graph));
-
-        chart
-            .configure_series_labels()
-            .background_style(colours.background)
-            .border_style(colours.border)
-            .label_font(text_style.clone())
-            .draw()?;
-
-        Ok(())
-    })
+            Ok(())
+        },
+    )
 }
 
 fn pie<'expenses>(
